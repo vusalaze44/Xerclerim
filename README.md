@@ -2,9 +2,9 @@
 
 Şəxsi maliyyə, kredit və dost borclarını vahid öhdəlik mənzərəsində birləşdirən Flutter layihəsi.
 
-## Mövcud başlanğıc
+## Hazırkı tətbiq
 
-`mobile/` daxilində AZN qəpik dəqiqliyi ilə işləyən gəlir/xərc qeydiyyatı, cihazda SQLite saxlanması və cari ayın xülasəsi və kredit üçün təxmini amortizasiya cədvəli var. Kredit cədvəli bankın faktiki borc qalığını və əlavə haqlarını əks etdirmir. Bu mərhələdə qeydiyyat, bulud sinxronizasiyası, dost borcunun mobil axını, bulud bağlantısı, bildiriş və AI ekranları hələ işlək deyil. `firestore/` qaydaları girişləri tam bağlayır; Firebase qoşulmadan öncə mülkiyyət və vəziyyət keçidləri serverdə qurulmalıdır.
+Giriş ekranı olmadan gəlir, xərc, büdcə, kredit, plan və yığım məqsədləri cihazda işləyir. Əsas ekran açıq fon, bənövşəyi aylıq xülasə, tarix seçimi, pastel funksiya kartları və pillə formasında alt naviqasiya ilə qurulub. Google hesabı yalnız bulud yedəyi və qarşılıqlı dost borcu sorğuları üçün tələb olunur.
 
 ## İşə salma
 
@@ -33,8 +33,14 @@ Məqsədlər bölməsində hədəf, son tarix, yığılan məbləğ, geri götü
 
 ## Google hesabı ilə ehtiyat nüsxəsi
 
-Google Sign-In + Firebase Auth hesabı ilə daxil olun, əsas ekrandakı bulud ikonundan **İndi yedəklə** seçin. Yedək Firestore-da həmin `uid` altında hissələrə bölünərək saxlanır. Bütün hissələr yazıldıqdan sonra manifest yaradılır və serverdən yenidən oxunaraq təsdiqlənir. Son yedəyi başqa cihazda **Bərpa et** ilə gətirmək mümkündür. Bərpa həmin hesabın cihazdakı məlumatlarını əvəz edir; təsdiq dialoqu göstərilir. Qonaq məlumatı hesaba yalnız ayrıca düymə ilə, hesabın lokal bazası boş olduqda kopyalanır. Google Drive icazəsi tələb edilmir.
+Google Sign-In + Firebase Auth hesabı ilə daxil olun, əsas ekrandakı bulud ikonundan **İndi yedəklə** seçin. Yedək Firestore-da həmin `uid` altında hissələrə bölünərək saxlanır. Bütün hissələr yazıldıqdan sonra manifest yaradılır və serverdən yenidən oxunaraq təsdiqlənir. Son yedəyi başqa cihazda **Bərpa et** ilə gətirmək mümkündür. Bərpa həmin hesabın cihazdakı məlumatlarını əvəz edir; təsdiq dialoqu göstərilir. Giriş zamanı hesabın lokal bazası boşdursa qonaq qeydlərinin kopyalanması təklif edilir; imtina edildikdə qonaq qeydləri saxlanılır və sonradan ayrıca düymə ilə köçürülə bilər. Google Drive icazəsi tələb edilmir.
 
 Bu versiyada yedəkləmə **əl ilədir**; avtomatik fon sinxronizasiyası, lokal şifrələmə və App Check ilə mobil yedək qorunması buraxılışdan əvvəl əlavə edilməlidir. Firebase layihəsi qoşulmamış tətbiq lokal rejimdə açılır.
 
 Quraşdırma: [docs/google-backup-setup.md](docs/google-backup-setup.md).
+
+## Dost borcları
+
+Hər iki şəxs Google hesabı ilə daxil olur. Qarşı tərəf öz istifadəçi kodunu tətbiqdən kopyalayıb paylaşır; bu kodla sorğu göndərilir. Alan şəxs sorğunu qəbul və ya rədd edir. Qəbul edilmiş borc üzrə borclu ödəniş bildirir, borc verən təsdiqləyir və ya etiraz edir. Qarşılıqlı təsdiq olmadan borc qalığı dəyişmir. Dost borcu qeydləri Cloud Functions və Firestore üzərindədir; bağlantı, Firebase Auth və App Check quraşdırılması tələb olunur. Push bildirişləri bu mərhələdə yoxdur, siyahı **Yenilə** ilə serverdən oxunur.
+
+Firebase layihəsində `europe-west1` funksiyalarını və Firestore qaydalarını yerləşdirin. Android üçün Play Integrity, Apple üçün App Attest provayderlərini Firebase konsolunda qeydiyyatdan keçirin; debug quruluşda göstərilən App Check debug tokenini həmin layihəyə əlavə edin. Mobil Firebase konfiqurasiyası, Google Sign-In SHA və bundle ID ayarları tamamlanmalıdır. Bunlar qoşulmamış lokal tətbiq girişsiz işləyir.

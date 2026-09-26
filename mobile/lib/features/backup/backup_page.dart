@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../transactions/local_ledger.dart';
 import 'cloud_backup.dart';
 import 'google_backup_auth.dart';
+import 'account_entry.dart';
 
 class BackupPage extends StatefulWidget {
   const BackupPage({super.key, required this.ledger, required this.ownerUid,
@@ -103,9 +104,9 @@ class _BackupPageState extends State<BackupPage> {
       if (!widget.firebaseReady) const Card(child: Padding(padding: EdgeInsets.all(16),
         child: Text('Firebase layihəsi hələ qoşulmayıb. Lokal məlumatlar cihazda qalır.')))
       else if (widget.ownerUid == null) ...[
-        const Text('Google hesabına daxil olduqda hesab üçün ayrıca lokal məlumat sahəsi açılır. Qonaq məlumatlarını sonra əl ilə köçürə bilərsiniz.'),
+        const Text('Girişsiz qeydləriniz işləməyə davam edir. Google hesabı yalnız yedək üçün lazımdır. Girişdə qonaq qeydlərini hesaba köçürməyi seçə bilərsiniz.'),
         FilledButton.icon(onPressed: busy ? null : () => _perform(() async {
-          await GoogleBackupAuth.signIn();
+          await signInWithGuestContinuity(context, widget.ledger);
           if (mounted) Navigator.pop(context);
         }), icon: const Icon(Icons.login), label: const Text('Google ilə daxil ol')),
       ] else ...[
