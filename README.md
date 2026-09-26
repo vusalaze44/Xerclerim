@@ -4,7 +4,7 @@
 
 ## Mövcud başlanğıc
 
-`mobile/` daxilində AZN qəpik dəqiqliyi ilə işləyən gəlir/xərc qeydiyyatı, cihazda SQLite saxlanması və cari ayın xülasəsi var. Bu mərhələdə qeydiyyat, bulud sinxronizasiyası, kredit, dost borcu, bildiriş və AI ekranları hələ işlək deyil. `firestore/` qaydaları girişləri tam bağlayır; Firebase qoşulmadan öncə mülkiyyət və vəziyyət keçidləri serverdə qurulmalıdır.
+`mobile/` daxilində AZN qəpik dəqiqliyi ilə işləyən gəlir/xərc qeydiyyatı, cihazda SQLite saxlanması və cari ayın xülasəsi və kredit üçün təxmini amortizasiya cədvəli var. Kredit cədvəli bankın faktiki borc qalığını və əlavə haqlarını əks etdirmir. Bu mərhələdə qeydiyyat, bulud sinxronizasiyası, kredit ödənişinin uçotu, dost borcu, bildiriş və AI ekranları hələ işlək deyil. `firestore/` qaydaları girişləri tam bağlayır; Firebase qoşulmadan öncə mülkiyyət və vəziyyət keçidləri serverdə qurulmalıdır.
 
 ## İşə salma
 

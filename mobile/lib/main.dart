@@ -3,6 +3,7 @@ import 'core/money.dart';
 import 'features/dashboard/summary.dart';
 import 'features/transactions/local_ledger.dart';
 import 'features/transactions/transaction.dart';
+import 'features/loans/loans_page.dart';
 
 void main() => runApp(const XerclerimApp());
 
@@ -27,6 +28,7 @@ class _LedgerPageState extends State<LedgerPage> {
   final ledger = LocalLedger();
   List<LedgerEntry> entries = [];
   String? error;
+  int selectedTab = 0;
   @override
   void initState() { super.initState(); _load(); }
   Future<void> _load() async {
@@ -80,6 +82,11 @@ class _LedgerPageState extends State<LedgerPage> {
   Widget build(BuildContext context) {
     final summary = MonthlySummary.from(entries, DateTime.now());
     return Scaffold(
+      bottomNavigationBar: NavigationBar(selectedIndex: selectedTab,
+        onDestinationSelected: (value) => setState(() => selectedTab = value),
+        destinations: const [NavigationDestination(icon: Icon(Icons.account_balance_wallet), label: 'Pul axını'),
+          NavigationDestination(icon: Icon(Icons.account_balance), label: 'Kreditlər')]),
+      body: selectedTab == 1 ? LoansPage(ledger: ledger) : Scaffold(
       appBar: AppBar(title: const Text('Xərclərim')),
       body: error != null ? Center(child: Text(error!)) : ListView(padding: const EdgeInsets.all(16), children: [
         Text('Bu ay', style: Theme.of(context).textTheme.headlineSmall),
@@ -103,6 +110,7 @@ class _LedgerPageState extends State<LedgerPage> {
           trailing: Text('${entry.kind == EntryKind.income ? '+' : '-'}${Money.format(entry.amountQepik)}'),
         ),
       ]),
+      ),
     );
   }
 }
