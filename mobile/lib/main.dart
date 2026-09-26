@@ -83,7 +83,10 @@ class _LedgerPageState extends State<LedgerPage> {
     final summary = MonthlySummary.from(entries, DateTime.now());
     return Scaffold(
       bottomNavigationBar: NavigationBar(selectedIndex: selectedTab,
-        onDestinationSelected: (value) => setState(() => selectedTab = value),
+        onDestinationSelected: (value) {
+          setState(() => selectedTab = value);
+          if (value == 0) _load();
+        },
         destinations: const [NavigationDestination(icon: Icon(Icons.account_balance_wallet), label: 'Pul axını'),
           NavigationDestination(icon: Icon(Icons.account_balance), label: 'Kreditlər')]),
       body: selectedTab == 1 ? LoansPage(ledger: ledger) : Scaffold(

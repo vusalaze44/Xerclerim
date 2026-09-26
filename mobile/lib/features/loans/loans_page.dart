@@ -76,6 +76,36 @@ class _LoansPageState extends State<LoansPage> {
       )));
     } finally { name.dispose(); principal.dispose(); rate.dispose(); months.dispose(); }
   }
+  Future<void> _recordPayment(Loan loan) async {
+    final amount = TextEditingController();
+    try {
+      await showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(
+        title: Text('${loan.name} · Ödəniş'),
+        content: TextField(controller: amount,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: const InputDecoration(labelText: 'Ödənən məbləğ (AZN)')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Ləğv et')),
+          FilledButton(onPressed: () async {
+            try {
+              final qepik = Money.parseAzN(amount.text);
+              if (qepik <= 0) throw const FormatException();
+              final now = DateTime.now();
+              await widget.ledger.addLoanPayment(LoanPayment(
+                id: '${now.microsecondsSinceEpoch}', loanId: loan.id,
+                amountQepik: qepik, paidAt: now));
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+              if (mounted) setState(() {});
+            } catch (_) {
+              if (dialogContext.mounted) ScaffoldMessenger.of(dialogContext).showSnackBar(
+                const SnackBar(content: Text('Müsbət ödəniş məbləği daxil edin.')));
+            }
+          }, child: const Text('Qeyd et')),
+        ],
+      ));
+    } finally { amount.dispose(); }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Kreditlər')),
@@ -95,6 +125,21 @@ class _LoansPageState extends State<LoansPage> {
       title: Text(loan.name),
       subtitle: Text('${Money.format(loan.principalQepik)} · ${loan.annualRateBps / 100}% · ${loan.months} ay'),
       children: [
+        FutureBuilder<List<LoanPayment>>(future: widget.ledger.loanPayments(loan.id),
+          builder: (context, snapshot) {
+            if (snapshot.hasError) return const ListTile(title: Text('Ödənişlər açıla bilmədi.'));
+            if (!snapshot.hasData) return const ListTile(title: Text('Ödənişlər yüklənir…'));
+            final payments = snapshot.data!;
+            final total = payments.fold<int>(0, (sum, item) => sum + item.amountQepik);
+            return Column(children: [
+              ListTile(title: const Text('Qeyd olunan faktiki ödənişlər'), trailing: Text(Money.format(total))),
+              for (final payment in payments) ListTile(dense: true,
+                title: Text('${payment.paidAt.day}.${payment.paidAt.month}.${payment.paidAt.year}'),
+                trailing: Text(Money.format(payment.amountQepik))),
+            ]);
+          }),
+        TextButton.icon(onPressed: () => _recordPayment(loan),
+          icon: const Icon(Icons.receipt_long), label: const Text('Ödəniş qeyd et')),
         ListTile(title: const Text('Təxmini nominal faiz cəmi'),
           trailing: Text(Money.format(LoanSchedule.totalInterest(schedule)))),
         for (final item in schedule) ListTile(

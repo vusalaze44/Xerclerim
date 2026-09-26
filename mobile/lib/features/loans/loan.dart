@@ -26,6 +26,7 @@ class LoanInstallment {
 class LoanSchedule {
   static List<LoanInstallment> generate(Loan loan) {
     if (loan.principalQepik <= 0 || loan.months < 1 || loan.months > 600 ||
+        loan.months > loan.principalQepik ||
         loan.annualRateBps < 0 || loan.annualRateBps > 100000) {
       throw const FormatException('Kredit şərtləri düzgün deyil.');
     }
@@ -55,4 +56,14 @@ class LoanSchedule {
 
   static int totalInterest(List<LoanInstallment> schedule) =>
       schedule.fold(0, (total, item) => total + item.interestQepik);
+}
+
+/// A manually recorded cash payment; it does not recalculate bank interest.
+class LoanPayment {
+  const LoanPayment({required this.id, required this.loanId,
+    required this.amountQepik, required this.paidAt});
+  final String id;
+  final String loanId;
+  final int amountQepik;
+  final DateTime paidAt;
 }

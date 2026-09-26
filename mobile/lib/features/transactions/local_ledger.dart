@@ -8,7 +8,7 @@ class LocalLedger {
 
   Future<Database> get database async => _db ??= await openDatabase(
         p.join(await getDatabasesPath(), 'xerclerim_v1.db'),
-        version: 2,
+        version: 3,
         onCreate: (db, version) async {
           await db.execute('''CREATE TABLE ledger (
             id TEXT PRIMARY KEY, kind TEXT NOT NULL, amount_qepik INTEGER NOT NULL
@@ -17,9 +17,11 @@ class LocalLedger {
           )''');
           await db.execute('CREATE INDEX ledger_date ON ledger(occurred_at)');
           await _createLoans(db);
+          await _createLoanPayments(db);
         },
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 2) await _createLoans(db);
+          if (oldVersion < 3) await _createLoanPayments(db);
         },
       );
 
@@ -27,6 +29,40 @@ class LocalLedger {
     id TEXT PRIMARY KEY, name TEXT NOT NULL, principal_qepik INTEGER NOT NULL,
     annual_rate_bps INTEGER NOT NULL, months INTEGER NOT NULL, first_due_date TEXT NOT NULL
   )''');
+
+  static Future<void> _createLoanPayments(Database db) => db.execute('''CREATE TABLE loan_payments (
+    id TEXT PRIMARY KEY, loan_id TEXT NOT NULL, amount_qepik INTEGER NOT NULL
+    CHECK(amount_qepik > 0), paid_at TEXT NOT NULL,
+    FOREIGN KEY(loan_id) REFERENCES loans(id)
+  )''');
+
+  Future<void> addLoanPayment(LoanPayment payment) async {
+    final db = await database;
+    await db.transaction((tx) async {
+      await tx.insert('loan_payments', {
+        'id': payment.id, 'loan_id': payment.loanId,
+        'amount_qepik': payment.amountQepik,
+        'paid_at': payment.paidAt.toUtc().toIso8601String(),
+      });
+      await tx.insert('ledger', {
+        'id': 'loan_${payment.id}', 'kind': EntryKind.expense.name,
+        'amount_qepik': payment.amountQepik, 'category': 'Kredit ödənişi',
+        'note': 'Kredit ödənişi',
+        'occurred_at': payment.paidAt.toUtc().toIso8601String(),
+        'sync_state': 'pending',
+      });
+    });
+  }
+
+  Future<List<LoanPayment>> loanPayments(String loanId) async {
+    final rows = await (await database).query('loan_payments',
+      where: 'loan_id = ?', whereArgs: [loanId], orderBy: 'paid_at DESC');
+    return rows.map((row) => LoanPayment(
+      id: row['id'] as String, loanId: row['loan_id'] as String,
+      amountQepik: row['amount_qepik'] as int,
+      paidAt: DateTime.parse(row['paid_at'] as String).toLocal(),
+    )).toList();
+  }
 
   Future<void> addLoan(Loan loan) async {
     await (await database).insert('loans', {

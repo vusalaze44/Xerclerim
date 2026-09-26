@@ -1,7 +1,21 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Deny all until authenticated ownership and debt state transitions are implemented.
+    function signedIn() { return request.auth != null; }
+    function debtMember(id) {
+      let debt = get(/databases/$(database)/documents/debts/$(id));
+      return signedIn() &&
+        (debt.data.lenderUid == request.auth.uid || debt.data.borrowerUid == request.auth.uid);
+    }
+    match /debts/{id} {
+      allow read: if signedIn() &&
+        (resource.data.lenderUid == request.auth.uid || resource.data.borrowerUid == request.auth.uid);
+      allow write: if false;
+      match /events/{eventId} {
+        allow read: if debtMember(id);
+        allow write: if false;
+      }
+    }
     match /{document=**} { allow read, write: if false; }
   }
 }

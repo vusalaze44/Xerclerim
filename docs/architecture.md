@@ -12,3 +12,5 @@
 ## Dost borcu vəziyyətləri
 
 `sorğu -> qəbul/rədd -> aktiv -> qismən ödənib -> bağlanıb`; ödəniş təklifi ayrıca `gözləyir -> təsdiq/etiraz` vəziyyətindədir. Tərəflərdən heç biri qarşı tərəfin təsdiqini öz adından yaza bilməz. Hər hadisə dəyişdirilməyən audit qeydidir; mübahisə tətbiqin özündə pul köçürməsi kimi təqdim olunmur.
+
+Cloud Functions dost borcunun yaradılması, qəbulu, ödəniş təklifi və təsdiqini Firestore transaksiyaları ilə edir. App Check məcburidir. İştirakçılar borc və hadisələri oxuya bilir, birbaşa yaza bilmirlər. Mobil Auth/FCM hələ qoşulmayıb; push xatırlatmalar ayrıca qurulacaq.
