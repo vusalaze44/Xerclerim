@@ -1,6 +1,6 @@
 # Mərhələlər
 
-1. **İlkin skelet (bu dəyişiklik):** lokal gəlir/xərc qeydiyyatı, cari ay xülasəsi, kredit cədvəli, kateqoriya limitləri və xərc filtri, qəpik dəqiqliyi, arxitektura və qapalı Firebase qaydaları.
+1. **İlkin skelet (bu dəyişiklik):** lokal gəlir/xərc və yığım məqsədləri, cari ay xülasəsi, kredit cədvəli, kateqoriya limitləri və xərc filtri, qəpik dəqiqliyi, arxitektura və qapalı Firebase qaydaları.
 2. **Hesab və sinxronizasiya:** Firebase layihəsi, Auth, istifadəçi üzrə şifrəli lokal baza, cihaz dəyişmə ssenariləri, idempotent iki istiqamətli sync və Firestore qaydaları.
 3. **Öhdəliklər:** bank cədvəlinin uyğunlaşdırılması və xatırlatmalar; hazırlanan dost borcu server axınının Auth və mobil ekranlara bağlanması, bildirişlər və audit sınaqları.
 4. **Büdcə və proqnoz:** kateqoriya limitləri və əl ilə verilən gələcək məbləğlərlə alış müqayisəsi var; növbəti addım təkrarlanan xərclər və gələcək aylar üzrə öhdəlik proqnozudur.

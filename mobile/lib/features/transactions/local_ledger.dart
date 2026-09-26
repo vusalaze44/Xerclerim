@@ -2,13 +2,14 @@ import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 import 'transaction.dart';
 import '../loans/loan.dart';
+import '../goals/goal.dart';
 
 class LocalLedger {
   Database? _db;
 
   Future<Database> get database async => _db ??= await openDatabase(
         p.join(await getDatabasesPath(), 'xerclerim_v1.db'),
-        version: 5,
+        version: 6,
         onCreate: (db, version) async {
           await db.execute('''CREATE TABLE ledger (
             id TEXT PRIMARY KEY, kind TEXT NOT NULL, amount_qepik INTEGER NOT NULL
@@ -20,12 +21,14 @@ class LocalLedger {
           await _createLoans(db);
           await _createLoanPayments(db);
           await _createBudgets(db);
+          await _createGoals(db);
         },
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 2) await _createLoans(db);
           if (oldVersion < 3) await _createLoanPayments(db);
           if (oldVersion < 4) await _createBudgets(db);
           if (oldVersion < 5) await db.execute('ALTER TABLE ledger ADD COLUMN deleted_at TEXT');
+          if (oldVersion < 6) await _createGoals(db);
         },
       );
 
@@ -65,6 +68,83 @@ class LocalLedger {
 
   static String _monthKey(DateTime month) =>
     '${month.year}-${month.month.toString().padLeft(2, '0')}';
+
+  static Future<void> _createGoals(Database db) async {
+    await db.execute('''CREATE TABLE savings_goals (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, target_qepik INTEGER NOT NULL
+      CHECK(target_qepik > 0), deadline TEXT NOT NULL
+    )''');
+    await db.execute('''CREATE TABLE goal_movements (
+      id TEXT PRIMARY KEY, goal_id TEXT NOT NULL, delta_qepik INTEGER NOT NULL
+      CHECK(delta_qepik != 0), created_at TEXT NOT NULL,
+      FOREIGN KEY(goal_id) REFERENCES savings_goals(id)
+    )''');
+    await db.execute('CREATE INDEX goal_movement_goal ON goal_movements(goal_id)');
+  }
+
+  Future<void> addGoal(SavingsGoal goal) async {
+    if (goal.targetQepik <= 0 || goal.name.trim().isEmpty) throw const FormatException();
+    await (await database).insert('savings_goals', {
+      'id': goal.id, 'name': goal.name.trim(), 'target_qepik': goal.targetQepik,
+      'deadline': goal.deadline.toIso8601String(),
+    });
+  }
+
+  Future<void> updateGoal(SavingsGoal goal) async {
+    if (goal.targetQepik <= 0 || goal.name.trim().isEmpty) throw const FormatException();
+    final count = await (await database).update('savings_goals', {
+      'name': goal.name.trim(), 'target_qepik': goal.targetQepik,
+      'deadline': goal.deadline.toIso8601String(),
+    }, where: 'id = ?', whereArgs: [goal.id]);
+    if (count != 1) throw const FormatException('Məqsəd dəyişdirilə bilmədi.');
+  }
+
+  Future<List<SavingsGoal>> goals() async {
+    final rows = await (await database).query('savings_goals', orderBy: 'deadline ASC');
+    return rows.map((row) => SavingsGoal(
+      id: row['id'] as String, name: row['name'] as String,
+      targetQepik: row['target_qepik'] as int,
+      deadline: DateTime.parse(row['deadline'] as String),
+    )).toList();
+  }
+
+  Future<List<GoalMovement>> goalMovements(String goalId) async {
+    final rows = await (await database).query('goal_movements',
+      where: 'goal_id = ?', whereArgs: [goalId], orderBy: 'created_at DESC');
+    return rows.map((row) => GoalMovement(
+      id: row['id'] as String, goalId: row['goal_id'] as String,
+      deltaQepik: row['delta_qepik'] as int,
+      createdAt: DateTime.parse(row['created_at'] as String).toLocal(),
+    )).toList();
+  }
+
+  Future<int> goalBalance(String goalId) async {
+    final rows = await (await database).rawQuery(
+      'SELECT COALESCE(SUM(delta_qepik), 0) AS balance FROM goal_movements WHERE goal_id = ?',
+      [goalId]);
+    return rows.first['balance'] as int;
+  }
+
+  Future<void> moveGoalMoney(GoalMovement movement) async {
+    if (movement.deltaQepik == 0) throw const FormatException();
+    final db = await database;
+    await db.transaction((tx) async {
+      final goals = await tx.query('savings_goals', columns: ['id'],
+        where: 'id = ?', whereArgs: [movement.goalId]);
+      if (goals.isEmpty) throw const FormatException('Məqsəd tapılmadı.');
+      final balance = await tx.rawQuery(
+        'SELECT COALESCE(SUM(delta_qepik), 0) AS balance FROM goal_movements WHERE goal_id = ?',
+        [movement.goalId]);
+      if ((balance.first['balance'] as int) + movement.deltaQepik < 0) {
+        throw const FormatException('Ayrılan məbləğdən çox götürülə bilməz.');
+      }
+      await tx.insert('goal_movements', {
+        'id': movement.id, 'goal_id': movement.goalId,
+        'delta_qepik': movement.deltaQepik,
+        'created_at': movement.createdAt.toUtc().toIso8601String(),
+      });
+    });
+  }
 
   Future<void> addLoanPayment(LoanPayment payment) async {
     final db = await database;
