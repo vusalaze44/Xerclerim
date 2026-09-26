@@ -26,3 +26,5 @@ flutter run
 Kreditin faktiki ödənişi ayrıca qeydə alınır və eyni anda aylıq xərcə daxil edilir. Bu məbləğ bankın hesabladığı faktiki qalıq kimi göstərilmir. Dost borcu üçün qarşılıqlı təsdiqlənən Cloud Functions hazırlanıb; Firebase layihəsi və mobil giriş qoşulmayınca istifadə edilmir.
 
 Xərclər ekranında aylıq kateqoriya bölgüsü, axtarış, kateqoriya filtri, limitlər və adi xərcləri düzəltmə/silmə var. Silinən qeydlər gələcək sinxronizasiya üçün lokal bazada işarələnir.
+
+Plan ekranı qeydə alınmış bu aylıq pul axınına və istifadəçinin gələcək gəlir/xərc fərziyyələrinə əsasən nağd və hissəli alış ssenarilərini müqayisə edir. Hesab balansını oxumur, satınalma qərarı vermir və gələcək ayların ödəmə qabiliyyətini qiymətləndirmir.

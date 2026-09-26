@@ -6,6 +6,7 @@ import 'features/transactions/transaction.dart';
 import 'features/loans/loans_page.dart';
 import 'features/expenses/expenses_page.dart';
 import 'features/expenses/expense_report.dart';
+import 'features/planning/planning_page.dart';
 
 void main() => runApp(const XerclerimApp());
 
@@ -100,8 +101,10 @@ class _LedgerPageState extends State<LedgerPage> {
         },
         destinations: const [NavigationDestination(icon: Icon(Icons.account_balance_wallet), label: 'Pul axını'),
           NavigationDestination(icon: Icon(Icons.receipt_long), label: 'Xərclər'),
-          NavigationDestination(icon: Icon(Icons.account_balance), label: 'Kreditlər')]),
-      body: selectedTab == 2 ? LoansPage(ledger: ledger) :
+          NavigationDestination(icon: Icon(Icons.account_balance), label: 'Kreditlər'),
+          NavigationDestination(icon: Icon(Icons.calculate), label: 'Plan')]),
+      body: selectedTab == 3 ? PlanningPage(entries: entries) :
+        selectedTab == 2 ? LoansPage(ledger: ledger) :
         selectedTab == 1 ? ExpensesPage(ledger: ledger, entries: entries,
           onAddExpense: () => _add(EntryKind.expense), onRefresh: _load) : Scaffold(
       appBar: AppBar(title: const Text('Xərclərim')),
