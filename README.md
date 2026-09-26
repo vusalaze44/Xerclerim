@@ -24,3 +24,5 @@ flutter run
 Ətraflı qərarlar: [arxitektura](docs/architecture.md), [məlumat modeli](docs/database.md), [mərhələlər](docs/roadmap.md).
 
 Kreditin faktiki ödənişi ayrıca qeydə alınır və eyni anda aylıq xərcə daxil edilir. Bu məbləğ bankın hesabladığı faktiki qalıq kimi göstərilmir. Dost borcu üçün qarşılıqlı təsdiqlənən Cloud Functions hazırlanıb; Firebase layihəsi və mobil giriş qoşulmayınca istifadə edilmir.
+
+Xərclər ekranında aylıq kateqoriya bölgüsü, axtarış, kateqoriya filtri, limitlər və adi xərcləri düzəltmə/silmə var. Silinən qeydlər gələcək sinxronizasiya üçün lokal bazada işarələnir.

@@ -4,6 +4,8 @@ import 'features/dashboard/summary.dart';
 import 'features/transactions/local_ledger.dart';
 import 'features/transactions/transaction.dart';
 import 'features/loans/loans_page.dart';
+import 'features/expenses/expenses_page.dart';
+import 'features/expenses/expense_report.dart';
 
 void main() => runApp(const XerclerimApp());
 
@@ -42,21 +44,30 @@ class _LedgerPageState extends State<LedgerPage> {
     final amount = TextEditingController();
     final note = TextEditingController();
     var category = kind == EntryKind.income ? 'Əməkhaqqı' : 'Ev bazarlığı';
+    var occurredAt = DateTime.now();
     final categories = kind == EntryKind.income
         ? ['Əməkhaqqı', 'Əlavə gəlir', 'Digər']
-        : ['Ev bazarlığı', 'Yanacaq', 'Kommunal', 'Təmir', 'Nəqliyyat', 'Digər'];
+        : expenseCategories;
     try {
       await showDialog<void>(context: context, builder: (dialogContext) => StatefulBuilder(
         builder: (context, refresh) => AlertDialog(
           title: Text(kind == EntryKind.income ? 'Gəlir əlavə et' : 'Xərc əlavə et'),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
+          content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
             TextField(controller: amount, keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(labelText: 'Məbləğ (AZN)')),
             DropdownButtonFormField<String>(initialValue: category, items: categories.map((item) =>
               DropdownMenuItem(value: item, child: Text(item))).toList(),
               onChanged: (value) { if (value != null) refresh(() => category = value); }),
             TextField(controller: note, decoration: const InputDecoration(labelText: 'Qeyd (istəyə bağlı)')),
-          ]),
+            TextButton.icon(icon: const Icon(Icons.calendar_month),
+              label: Text('Tarix: ${occurredAt.day}.${occurredAt.month}.${occurredAt.year}'),
+              onPressed: () async {
+                final picked = await showDatePicker(context: dialogContext,
+                  initialDate: occurredAt, firstDate: DateTime(2000),
+                  lastDate: DateTime.now());
+                if (picked != null) refresh(() => occurredAt = picked);
+              }),
+          ])),
           actions: [
             TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Ləğv et')),
             FilledButton(onPressed: () async {
@@ -64,7 +75,7 @@ class _LedgerPageState extends State<LedgerPage> {
                 final qepik = Money.parseAzN(amount.text);
                 if (qepik <= 0) throw const FormatException();
                 await ledger.add(LedgerEntry(id: '${DateTime.now().microsecondsSinceEpoch}', kind: kind,
-                  amountQepik: qepik, category: category, note: note.text.trim(), occurredAt: DateTime.now()));
+                  amountQepik: qepik, category: category, note: note.text.trim(), occurredAt: occurredAt));
                 if (dialogContext.mounted) Navigator.pop(dialogContext);
                 await _load();
               } catch (_) {
@@ -85,11 +96,14 @@ class _LedgerPageState extends State<LedgerPage> {
       bottomNavigationBar: NavigationBar(selectedIndex: selectedTab,
         onDestinationSelected: (value) {
           setState(() => selectedTab = value);
-          if (value == 0) _load();
+          if (value != 1) _load();
         },
         destinations: const [NavigationDestination(icon: Icon(Icons.account_balance_wallet), label: 'Pul axını'),
+          NavigationDestination(icon: Icon(Icons.receipt_long), label: 'Xərclər'),
           NavigationDestination(icon: Icon(Icons.account_balance), label: 'Kreditlər')]),
-      body: selectedTab == 1 ? LoansPage(ledger: ledger) : Scaffold(
+      body: selectedTab == 2 ? LoansPage(ledger: ledger) :
+        selectedTab == 1 ? ExpensesPage(ledger: ledger, entries: entries,
+          onAddExpense: () => _add(EntryKind.expense), onRefresh: _load) : Scaffold(
       appBar: AppBar(title: const Text('Xərclərim')),
       body: error != null ? Center(child: Text(error!)) : ListView(padding: const EdgeInsets.all(16), children: [
         Text('Bu ay', style: Theme.of(context).textTheme.headlineSmall),

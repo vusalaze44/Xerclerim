@@ -8,20 +8,24 @@ class LocalLedger {
 
   Future<Database> get database async => _db ??= await openDatabase(
         p.join(await getDatabasesPath(), 'xerclerim_v1.db'),
-        version: 3,
+        version: 5,
         onCreate: (db, version) async {
           await db.execute('''CREATE TABLE ledger (
             id TEXT PRIMARY KEY, kind TEXT NOT NULL, amount_qepik INTEGER NOT NULL
             CHECK(amount_qepik > 0), category TEXT NOT NULL, note TEXT NOT NULL,
-            occurred_at TEXT NOT NULL, sync_state TEXT NOT NULL DEFAULT 'pending'
+            occurred_at TEXT NOT NULL, sync_state TEXT NOT NULL DEFAULT 'pending',
+            deleted_at TEXT
           )''');
           await db.execute('CREATE INDEX ledger_date ON ledger(occurred_at)');
           await _createLoans(db);
           await _createLoanPayments(db);
+          await _createBudgets(db);
         },
         onUpgrade: (db, oldVersion, newVersion) async {
           if (oldVersion < 2) await _createLoans(db);
           if (oldVersion < 3) await _createLoanPayments(db);
+          if (oldVersion < 4) await _createBudgets(db);
+          if (oldVersion < 5) await db.execute('ALTER TABLE ledger ADD COLUMN deleted_at TEXT');
         },
       );
 
@@ -35,6 +39,32 @@ class LocalLedger {
     CHECK(amount_qepik > 0), paid_at TEXT NOT NULL,
     FOREIGN KEY(loan_id) REFERENCES loans(id)
   )''');
+
+  static Future<void> _createBudgets(Database db) => db.execute('''CREATE TABLE budgets (
+    month TEXT NOT NULL, category TEXT NOT NULL, limit_qepik INTEGER NOT NULL
+    CHECK(limit_qepik > 0), PRIMARY KEY(month, category)
+  )''');
+
+  Future<Map<String, int>> budgets(DateTime month) async {
+    final rows = await (await database).query('budgets',
+      where: 'month = ?', whereArgs: [_monthKey(month)]);
+    return {for (final row in rows) row['category'] as String: row['limit_qepik'] as int};
+  }
+
+  Future<void> setBudget(DateTime month, String category, int limitQepik) async {
+    if (limitQepik <= 0) throw const FormatException('Limit müsbət olmalıdır.');
+    await (await database).insert('budgets', {
+      'month': _monthKey(month), 'category': category, 'limit_qepik': limitQepik,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> removeBudget(DateTime month, String category) async {
+    await (await database).delete('budgets', where: 'month = ? AND category = ?',
+      whereArgs: [_monthKey(month), category]);
+  }
+
+  static String _monthKey(DateTime month) =>
+    '${month.year}-${month.month.toString().padLeft(2, '0')}';
 
   Future<void> addLoanPayment(LoanPayment payment) async {
     final db = await database;
@@ -92,8 +122,29 @@ class LocalLedger {
     }, conflictAlgorithm: ConflictAlgorithm.abort);
   }
 
+  Future<void> updateExpense(LedgerEntry entry) async {
+    if (entry.kind != EntryKind.expense || entry.amountQepik <= 0 ||
+        entry.id.startsWith('loan_')) throw const FormatException('Xərc dəyişdirilə bilməz.');
+    final count = await (await database).update('ledger', {
+      'amount_qepik': entry.amountQepik, 'category': entry.category,
+      'note': entry.note, 'occurred_at': entry.occurredAt.toUtc().toIso8601String(),
+      'sync_state': 'pending',
+    }, where: 'id = ? AND kind = ? AND deleted_at IS NULL AND id NOT GLOB ?',
+      whereArgs: [entry.id, EntryKind.expense.name, 'loan_*']);
+    if (count != 1) throw const FormatException('Xərc dəyişdirilə bilmədi.');
+  }
+
+  Future<void> deleteExpense(String id) async {
+    if (id.startsWith('loan_')) throw const FormatException('Kredit ödənişi bu bölmədən silinmir.');
+    final count = await (await database).update('ledger', {
+      'deleted_at': DateTime.now().toUtc().toIso8601String(), 'sync_state': 'pending',
+    }, where: 'id = ? AND kind = ? AND deleted_at IS NULL AND id NOT GLOB ?',
+      whereArgs: [id, EntryKind.expense.name, 'loan_*']);
+    if (count != 1) throw const FormatException('Xərc silinə bilmədi.');
+  }
+
   Future<List<LedgerEntry>> all() async {
-    final rows = await (await database).query('ledger', orderBy: 'occurred_at DESC');
+    final rows = await (await database).query('ledger', where: 'deleted_at IS NULL', orderBy: 'occurred_at DESC');
     return rows.map((row) => LedgerEntry(
       id: row['id'] as String,
       kind: EntryKind.values.byName(row['kind'] as String),
