@@ -30,3 +30,11 @@ Xərclər ekranında aylıq kateqoriya bölgüsü, axtarış, kateqoriya filtri,
 Plan ekranı qeydə alınmış bu aylıq pul axınına və istifadəçinin gələcək gəlir/xərc fərziyyələrinə əsasən nağd və hissəli alış ssenarilərini müqayisə edir. Hesab balansını oxumur, satınalma qərarı vermir və gələcək ayların ödəmə qabiliyyətini qiymətləndirmir.
 
 Məqsədlər bölməsində hədəf, son tarix, yığılan məbləğ, geri götürmə və tarixçə cihazda saxlanır. Bu, real bank hesabı və ya pul köçürməsi deyil.
+
+## Google hesabı ilə ehtiyat nüsxəsi
+
+Google Sign-In + Firebase Auth hesabı ilə daxil olun, əsas ekrandakı bulud ikonundan **İndi yedəklə** seçin. Yedək Firestore-da həmin `uid` altında hissələrə bölünərək saxlanır. Bütün hissələr yazıldıqdan sonra manifest yaradılır və serverdən yenidən oxunaraq təsdiqlənir. Son yedəyi başqa cihazda **Bərpa et** ilə gətirmək mümkündür. Bərpa həmin hesabın cihazdakı məlumatlarını əvəz edir; təsdiq dialoqu göstərilir. Qonaq məlumatı hesaba yalnız ayrıca düymə ilə, hesabın lokal bazası boş olduqda kopyalanır. Google Drive icazəsi tələb edilmir.
+
+Bu versiyada yedəkləmə **əl ilədir**; avtomatik fon sinxronizasiyası, lokal şifrələmə və App Check ilə mobil yedək qorunması buraxılışdan əvvəl əlavə edilməlidir. Firebase layihəsi qoşulmamış tətbiq lokal rejimdə açılır.
+
+Quraşdırma: [docs/google-backup-setup.md](docs/google-backup-setup.md).

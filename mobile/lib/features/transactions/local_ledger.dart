@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart';
 import 'transaction.dart';
@@ -5,10 +7,16 @@ import '../loans/loan.dart';
 import '../goals/goal.dart';
 
 class LocalLedger {
+  LocalLedger({this.ownerUid, String? databasePath}) : _databasePath = databasePath;
+  final String? ownerUid;
+  final String? _databasePath;
   Database? _db;
+  String get _filename => ownerUid == null
+    ? 'xerclerim_v1.db'
+    : 'xerclerim_${sha256.convert(utf8.encode(ownerUid!))}.db';
 
   Future<Database> get database async => _db ??= await openDatabase(
-        p.join(await getDatabasesPath(), 'xerclerim_v1.db'),
+        _databasePath ?? p.join(await getDatabasesPath(), _filename),
         version: 6,
         onCreate: (db, version) async {
           await db.execute('''CREATE TABLE ledger (
@@ -233,6 +241,63 @@ class LocalLedger {
       note: row['note'] as String,
       occurredAt: DateTime.parse(row['occurred_at'] as String).toLocal(),
     )).toList();
+  }
+
+  static const backupTables = <String>[
+    'ledger', 'loans', 'loan_payments', 'budgets', 'savings_goals', 'goal_movements',
+  ];
+
+  Future<bool> hasAnyData() async {
+    final db = await database;
+    for (final table in backupTables) {
+      final rows = await db.rawQuery('SELECT 1 FROM $table LIMIT 1');
+      if (rows.isNotEmpty) return true;
+    }
+    return false;
+  }
+
+  Future<Map<String, dynamic>> exportSnapshot() async {
+    final db = await database;
+    // A single read transaction keeps all related tables at one local point in time.
+    return db.transaction((tx) async {
+      final tables = <String, dynamic>{};
+      for (final table in backupTables) {
+        tables[table] = await tx.query(table);
+      }
+      return <String, dynamic>{'schemaVersion': 1, 'tables': tables};
+    });
+  }
+
+  Future<void> importSnapshot(Map<String, dynamic> snapshot,
+      {required bool replaceExisting}) async {
+    if (snapshot['schemaVersion'] != 1 || snapshot['tables'] is! Map) {
+      throw const FormatException('Yedəyin formatı dəstəklənmir.');
+    }
+    final tables = snapshot['tables'] as Map;
+    for (final table in backupTables) {
+      if (tables[table] is! List || (tables[table] as List).length > 100000) {
+        throw const FormatException('Yedəkdə cədvəl çatışmır və ya həddən böyükdür.');
+      }
+    }
+    final db = await database;
+    await db.transaction((tx) async {
+      if (!replaceExisting) {
+        for (final table in backupTables) {
+          if ((await tx.rawQuery('SELECT 1 FROM $table LIMIT 1')).isNotEmpty) {
+            throw const StateError('Hesabda artıq lokal məlumat var.');
+          }
+        }
+      } else {
+        for (final table in backupTables.reversed) { await tx.delete(table); }
+      }
+      for (final table in backupTables) {
+        for (final raw in tables[table] as List) {
+          if (raw is! Map) throw const FormatException('Yedəkdə qeyd düzgün deyil.');
+          final row = Map<String, Object?>.from(raw);
+          await tx.insert(table, row);
+        }
+      }
+    });
   }
 
   Future<void> close() async { await _db?.close(); _db = null; }

@@ -17,5 +17,5 @@ local.properties
 google-services.json
 GoogleService-Info.plist
 .env*
-functions/node_modules/
+node_modules/
 functions/lib/

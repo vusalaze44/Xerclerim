@@ -1,0 +1,11 @@
+{
+  "name": "xerclerim-firestore-rules-tests",
+  "private": true,
+  "scripts": {
+    "test": "cd ../.. && npx --yes firebase-tools@13.35.1 emulators:exec --only firestore --project demo-xerclerim 'node firestore/test/security.test.cjs'"
+  },
+  "dependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase": "^12.19.0"
+  }
+}
