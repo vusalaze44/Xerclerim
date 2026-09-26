@@ -1,0 +1,50 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function debtMember(id) {
+      let debt = get(/databases/$(database)/documents/debts/$(id));
+      return signedIn() &&
+        (debt.data.lenderUid == request.auth.uid || debt.data.borrowerUid == request.auth.uid);
+    }
+    // Only authenticated owners can create/read immutable backup manifests and chunks.
+    // The manifest is written last, after every chunk has reached the server.
+    match /users/{uid}/backups/{backupId} {
+      allow get, list: if signedIn() && request.auth.uid == uid;
+      allow create: if signedIn() && request.auth.uid == uid &&
+        request.resource.data.keys().hasOnly([
+          'schemaVersion', 'chunkCount', 'byteLength', 'sha256', 'recordCount', 'createdAt'
+        ]) && request.resource.data.schemaVersion == 1 &&
+        request.resource.data.chunkCount is int &&
+        request.resource.data.chunkCount > 0 && request.resource.data.chunkCount <= 200 &&
+        request.resource.data.byteLength is int &&
+        request.resource.data.byteLength > 0 && request.resource.data.byteLength <= 24000000 &&
+        request.resource.data.recordCount is int &&
+        request.resource.data.recordCount >= 0 &&
+        request.resource.data.sha256 is string &&
+        request.resource.data.sha256.size() == 64 &&
+        request.resource.data.createdAt is timestamp;
+      allow update, delete: if false;
+      match /chunks/{chunkId} {
+        allow get, list: if signedIn() && request.auth.uid == uid;
+        allow create: if signedIn() && request.auth.uid == uid &&
+          request.resource.data.keys().hasOnly(['index', 'payload']) &&
+          request.resource.data.index is int &&
+          request.resource.data.index >= 0 && request.resource.data.index < 200 &&
+          request.resource.data.payload is string &&
+          request.resource.data.payload.size() <= 160000;
+        allow update, delete: if false;
+      }
+    }
+    match /debts/{id} {
+      allow read: if signedIn() &&
+        (resource.data.lenderUid == request.auth.uid || resource.data.borrowerUid == request.auth.uid);
+      allow write: if false;
+      match /events/{eventId} {
+        allow read: if debtMember(id);
+        allow write: if false;
+      }
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

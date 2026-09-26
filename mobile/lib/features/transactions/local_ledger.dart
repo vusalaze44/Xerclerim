@@ -1,0 +1,304 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+import 'package:path/path.dart' as p;
+import 'package:sqflite/sqflite.dart';
+import 'transaction.dart';
+import '../loans/loan.dart';
+import '../goals/goal.dart';
+
+class LocalLedger {
+  LocalLedger({this.ownerUid, String? databasePath}) : _databasePath = databasePath;
+  final String? ownerUid;
+  final String? _databasePath;
+  Database? _db;
+  String get _filename => ownerUid == null
+    ? 'xerclerim_v1.db'
+    : 'xerclerim_${sha256.convert(utf8.encode(ownerUid!))}.db';
+
+  Future<Database> get database async => _db ??= await openDatabase(
+        _databasePath ?? p.join(await getDatabasesPath(), _filename),
+        version: 6,
+        onCreate: (db, version) async {
+          await db.execute('''CREATE TABLE ledger (
+            id TEXT PRIMARY KEY, kind TEXT NOT NULL, amount_qepik INTEGER NOT NULL
+            CHECK(amount_qepik > 0), category TEXT NOT NULL, note TEXT NOT NULL,
+            occurred_at TEXT NOT NULL, sync_state TEXT NOT NULL DEFAULT 'pending',
+            deleted_at TEXT
+          )''');
+          await db.execute('CREATE INDEX ledger_date ON ledger(occurred_at)');
+          await _createLoans(db);
+          await _createLoanPayments(db);
+          await _createBudgets(db);
+          await _createGoals(db);
+        },
+        onUpgrade: (db, oldVersion, newVersion) async {
+          if (oldVersion < 2) await _createLoans(db);
+          if (oldVersion < 3) await _createLoanPayments(db);
+          if (oldVersion < 4) await _createBudgets(db);
+          if (oldVersion < 5) await db.execute('ALTER TABLE ledger ADD COLUMN deleted_at TEXT');
+          if (oldVersion < 6) await _createGoals(db);
+        },
+      );
+
+  static Future<void> _createLoans(Database db) => db.execute('''CREATE TABLE loans (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL, principal_qepik INTEGER NOT NULL,
+    annual_rate_bps INTEGER NOT NULL, months INTEGER NOT NULL, first_due_date TEXT NOT NULL
+  )''');
+
+  static Future<void> _createLoanPayments(Database db) => db.execute('''CREATE TABLE loan_payments (
+    id TEXT PRIMARY KEY, loan_id TEXT NOT NULL, amount_qepik INTEGER NOT NULL
+    CHECK(amount_qepik > 0), paid_at TEXT NOT NULL,
+    FOREIGN KEY(loan_id) REFERENCES loans(id)
+  )''');
+
+  static Future<void> _createBudgets(Database db) => db.execute('''CREATE TABLE budgets (
+    month TEXT NOT NULL, category TEXT NOT NULL, limit_qepik INTEGER NOT NULL
+    CHECK(limit_qepik > 0), PRIMARY KEY(month, category)
+  )''');
+
+  Future<Map<String, int>> budgets(DateTime month) async {
+    final rows = await (await database).query('budgets',
+      where: 'month = ?', whereArgs: [_monthKey(month)]);
+    return {for (final row in rows) row['category'] as String: row['limit_qepik'] as int};
+  }
+
+  Future<void> setBudget(DateTime month, String category, int limitQepik) async {
+    if (limitQepik <= 0) throw const FormatException('Limit müsbət olmalıdır.');
+    await (await database).insert('budgets', {
+      'month': _monthKey(month), 'category': category, 'limit_qepik': limitQepik,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> removeBudget(DateTime month, String category) async {
+    await (await database).delete('budgets', where: 'month = ? AND category = ?',
+      whereArgs: [_monthKey(month), category]);
+  }
+
+  static String _monthKey(DateTime month) =>
+    '${month.year}-${month.month.toString().padLeft(2, '0')}';
+
+  static Future<void> _createGoals(Database db) async {
+    await db.execute('''CREATE TABLE savings_goals (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, target_qepik INTEGER NOT NULL
+      CHECK(target_qepik > 0), deadline TEXT NOT NULL
+    )''');
+    await db.execute('''CREATE TABLE goal_movements (
+      id TEXT PRIMARY KEY, goal_id TEXT NOT NULL, delta_qepik INTEGER NOT NULL
+      CHECK(delta_qepik != 0), created_at TEXT NOT NULL,
+      FOREIGN KEY(goal_id) REFERENCES savings_goals(id)
+    )''');
+    await db.execute('CREATE INDEX goal_movement_goal ON goal_movements(goal_id)');
+  }
+
+  Future<void> addGoal(SavingsGoal goal) async {
+    if (goal.targetQepik <= 0 || goal.name.trim().isEmpty) throw const FormatException();
+    await (await database).insert('savings_goals', {
+      'id': goal.id, 'name': goal.name.trim(), 'target_qepik': goal.targetQepik,
+      'deadline': goal.deadline.toIso8601String(),
+    });
+  }
+
+  Future<void> updateGoal(SavingsGoal goal) async {
+    if (goal.targetQepik <= 0 || goal.name.trim().isEmpty) throw const FormatException();
+    final count = await (await database).update('savings_goals', {
+      'name': goal.name.trim(), 'target_qepik': goal.targetQepik,
+      'deadline': goal.deadline.toIso8601String(),
+    }, where: 'id = ?', whereArgs: [goal.id]);
+    if (count != 1) throw const FormatException('Məqsəd dəyişdirilə bilmədi.');
+  }
+
+  Future<List<SavingsGoal>> goals() async {
+    final rows = await (await database).query('savings_goals', orderBy: 'deadline ASC');
+    return rows.map((row) => SavingsGoal(
+      id: row['id'] as String, name: row['name'] as String,
+      targetQepik: row['target_qepik'] as int,
+      deadline: DateTime.parse(row['deadline'] as String),
+    )).toList();
+  }
+
+  Future<List<GoalMovement>> goalMovements(String goalId) async {
+    final rows = await (await database).query('goal_movements',
+      where: 'goal_id = ?', whereArgs: [goalId], orderBy: 'created_at DESC');
+    return rows.map((row) => GoalMovement(
+      id: row['id'] as String, goalId: row['goal_id'] as String,
+      deltaQepik: row['delta_qepik'] as int,
+      createdAt: DateTime.parse(row['created_at'] as String).toLocal(),
+    )).toList();
+  }
+
+  Future<int> goalBalance(String goalId) async {
+    final rows = await (await database).rawQuery(
+      'SELECT COALESCE(SUM(delta_qepik), 0) AS balance FROM goal_movements WHERE goal_id = ?',
+      [goalId]);
+    return rows.first['balance'] as int;
+  }
+
+  Future<void> moveGoalMoney(GoalMovement movement) async {
+    if (movement.deltaQepik == 0) throw const FormatException();
+    final db = await database;
+    await db.transaction((tx) async {
+      final goals = await tx.query('savings_goals', columns: ['id'],
+        where: 'id = ?', whereArgs: [movement.goalId]);
+      if (goals.isEmpty) throw const FormatException('Məqsəd tapılmadı.');
+      final balance = await tx.rawQuery(
+        'SELECT COALESCE(SUM(delta_qepik), 0) AS balance FROM goal_movements WHERE goal_id = ?',
+        [movement.goalId]);
+      if ((balance.first['balance'] as int) + movement.deltaQepik < 0) {
+        throw const FormatException('Ayrılan məbləğdən çox götürülə bilməz.');
+      }
+      await tx.insert('goal_movements', {
+        'id': movement.id, 'goal_id': movement.goalId,
+        'delta_qepik': movement.deltaQepik,
+        'created_at': movement.createdAt.toUtc().toIso8601String(),
+      });
+    });
+  }
+
+  Future<void> addLoanPayment(LoanPayment payment) async {
+    final db = await database;
+    await db.transaction((tx) async {
+      await tx.insert('loan_payments', {
+        'id': payment.id, 'loan_id': payment.loanId,
+        'amount_qepik': payment.amountQepik,
+        'paid_at': payment.paidAt.toUtc().toIso8601String(),
+      });
+      await tx.insert('ledger', {
+        'id': 'loan_${payment.id}', 'kind': EntryKind.expense.name,
+        'amount_qepik': payment.amountQepik, 'category': 'Kredit ödənişi',
+        'note': 'Kredit ödənişi',
+        'occurred_at': payment.paidAt.toUtc().toIso8601String(),
+        'sync_state': 'pending',
+      });
+    });
+  }
+
+  Future<List<LoanPayment>> loanPayments(String loanId) async {
+    final rows = await (await database).query('loan_payments',
+      where: 'loan_id = ?', whereArgs: [loanId], orderBy: 'paid_at DESC');
+    return rows.map((row) => LoanPayment(
+      id: row['id'] as String, loanId: row['loan_id'] as String,
+      amountQepik: row['amount_qepik'] as int,
+      paidAt: DateTime.parse(row['paid_at'] as String).toLocal(),
+    )).toList();
+  }
+
+  Future<void> addLoan(Loan loan) async {
+    await (await database).insert('loans', {
+      'id': loan.id, 'name': loan.name, 'principal_qepik': loan.principalQepik,
+      'annual_rate_bps': loan.annualRateBps, 'months': loan.months,
+      'first_due_date': loan.firstDueDate.toIso8601String(),
+    });
+  }
+
+  Future<List<Loan>> loans() async {
+    final rows = await (await database).query('loans', orderBy: 'first_due_date ASC');
+    return rows.map((row) => Loan(
+      id: row['id'] as String, name: row['name'] as String,
+      principalQepik: row['principal_qepik'] as int,
+      annualRateBps: row['annual_rate_bps'] as int, months: row['months'] as int,
+      firstDueDate: DateTime.parse(row['first_due_date'] as String),
+    )).toList();
+  }
+
+  Future<void> add(LedgerEntry entry) async {
+    final db = await database;
+    await db.insert('ledger', {
+      'id': entry.id, 'kind': entry.kind.name,
+      'amount_qepik': entry.amountQepik, 'category': entry.category,
+      'note': entry.note, 'occurred_at': entry.occurredAt.toUtc().toIso8601String(),
+      'sync_state': 'pending',
+    }, conflictAlgorithm: ConflictAlgorithm.abort);
+  }
+
+  Future<void> updateExpense(LedgerEntry entry) async {
+    if (entry.kind != EntryKind.expense || entry.amountQepik <= 0 ||
+        entry.id.startsWith('loan_')) throw const FormatException('Xərc dəyişdirilə bilməz.');
+    final count = await (await database).update('ledger', {
+      'amount_qepik': entry.amountQepik, 'category': entry.category,
+      'note': entry.note, 'occurred_at': entry.occurredAt.toUtc().toIso8601String(),
+      'sync_state': 'pending',
+    }, where: 'id = ? AND kind = ? AND deleted_at IS NULL AND id NOT GLOB ?',
+      whereArgs: [entry.id, EntryKind.expense.name, 'loan_*']);
+    if (count != 1) throw const FormatException('Xərc dəyişdirilə bilmədi.');
+  }
+
+  Future<void> deleteExpense(String id) async {
+    if (id.startsWith('loan_')) throw const FormatException('Kredit ödənişi bu bölmədən silinmir.');
+    final count = await (await database).update('ledger', {
+      'deleted_at': DateTime.now().toUtc().toIso8601String(), 'sync_state': 'pending',
+    }, where: 'id = ? AND kind = ? AND deleted_at IS NULL AND id NOT GLOB ?',
+      whereArgs: [id, EntryKind.expense.name, 'loan_*']);
+    if (count != 1) throw const FormatException('Xərc silinə bilmədi.');
+  }
+
+  Future<List<LedgerEntry>> all() async {
+    final rows = await (await database).query('ledger', where: 'deleted_at IS NULL', orderBy: 'occurred_at DESC');
+    return rows.map((row) => LedgerEntry(
+      id: row['id'] as String,
+      kind: EntryKind.values.byName(row['kind'] as String),
+      amountQepik: row['amount_qepik'] as int,
+      category: row['category'] as String,
+      note: row['note'] as String,
+      occurredAt: DateTime.parse(row['occurred_at'] as String).toLocal(),
+    )).toList();
+  }
+
+  static const backupTables = <String>[
+    'ledger', 'loans', 'loan_payments', 'budgets', 'savings_goals', 'goal_movements',
+  ];
+
+  Future<bool> hasAnyData() async {
+    final db = await database;
+    for (final table in backupTables) {
+      final rows = await db.rawQuery('SELECT 1 FROM $table LIMIT 1');
+      if (rows.isNotEmpty) return true;
+    }
+    return false;
+  }
+
+  Future<Map<String, dynamic>> exportSnapshot() async {
+    final db = await database;
+    // A single read transaction keeps all related tables at one local point in time.
+    return db.transaction((tx) async {
+      final tables = <String, dynamic>{};
+      for (final table in backupTables) {
+        tables[table] = await tx.query(table);
+      }
+      return <String, dynamic>{'schemaVersion': 1, 'tables': tables};
+    });
+  }
+
+  Future<void> importSnapshot(Map<String, dynamic> snapshot,
+      {required bool replaceExisting}) async {
+    if (snapshot['schemaVersion'] != 1 || snapshot['tables'] is! Map) {
+      throw const FormatException('Yedəyin formatı dəstəklənmir.');
+    }
+    final tables = snapshot['tables'] as Map;
+    for (final table in backupTables) {
+      if (tables[table] is! List || (tables[table] as List).length > 100000) {
+        throw const FormatException('Yedəkdə cədvəl çatışmır və ya həddən böyükdür.');
+      }
+    }
+    final db = await database;
+    await db.transaction((tx) async {
+      if (!replaceExisting) {
+        for (final table in backupTables) {
+          if ((await tx.rawQuery('SELECT 1 FROM $table LIMIT 1')).isNotEmpty) {
+            throw const StateError('Hesabda artıq lokal məlumat var.');
+          }
+        }
+      } else {
+        for (final table in backupTables.reversed) { await tx.delete(table); }
+      }
+      for (final table in backupTables) {
+        for (final raw in tables[table] as List) {
+          if (raw is! Map) throw const FormatException('Yedəkdə qeyd düzgün deyil.');
+          final row = Map<String, Object?>.from(raw);
+          await tx.insert(table, row);
+        }
+      }
+    });
+  }
+
+  Future<void> close() async { await _db?.close(); _db = null; }
+}
